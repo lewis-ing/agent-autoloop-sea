@@ -23,12 +23,13 @@ import {
   systemUnit,
   untilAnswering,
 } from "../host/service.ts";
+import { SEA } from "../host/sea.ts";
 import { versionLine } from "../host/version.ts";
 import { clockFor, colorFor, render, replayCommand, skippedLine } from "./status.ts";
 import { attemptsOf, newFailure, waitingRetry } from "./try.ts";
 
-const ROOT = path.join(import.meta.dirname, "..");
-const PROGRAM = path.join(ROOT, "bin", "agent-autoloop.ts");
+const ROOT = SEA ? "" : path.join(import.meta.dirname, "..");
+const PROGRAM = SEA ? process.execPath : path.join(ROOT, "bin", "agent-autoloop.ts");
 
 const HELP = `Agent 自动化中台
 
@@ -240,7 +241,8 @@ function starterRules(agents: Record<string, object>, first: string) {
 
 /** Shows the user's Agents how to set it up. Only for the install in its usual place, never over their own. */
 function linkSkill() {
-  if (process.env.AGENT_AUTOLOOP_HOME) return;
+  // An executable carries the skill inside, so there is no folder to link to.
+  if (SEA || process.env.AGENT_AUTOLOOP_HOME) return;
   for (const agent of [".claude", ".codex"]) {
     if (!existsSync(path.join(homedir(), agent))) continue;
     const link = path.join(homedir(), agent, "skills", "agent-autoloop");
@@ -252,6 +254,8 @@ function linkSkill() {
 
 /** What to type to run this program: its name if that's what a shell finds, otherwise where it is. */
 function howToRun() {
+  // The executable is the program: what a shell finds, or the file itself.
+  if (SEA) return process.execPath;
   if (process.platform === "win32") {
     const found = findOnPath("agent-autoloop");
     if (found && realpathSync(found) === realpathSync(path.join(ROOT, "bin", "agent-autoloop.cmd")))
@@ -647,7 +651,7 @@ async function doctor() {
         const tried = `试了 ${failure.tries} 次${failure.givenUp ? "，已经不再重试" : ""}`;
         say(false, `${channel.name}最近一张卡片（#${failure.card}）没送到：${failure.error}（${tried}）`);
       }
-      const manual = path.join(ROOT, "skills", "agent-autoloop", "SKILL.md");
+      const manual = SEA ? "agent-autoloop 的说明" : path.join(ROOT, "skills", "agent-autoloop", "SKILL.md");
       if (!state.channels.length) {
         console.log(`○ 还没接通道：Agent 问你时不会主动告诉你，要自己运行 agent-autoloop status 看。接法见 ${manual}`);
       } else if (state.channels.length === 1 && state.channels[0].id === "desktop") {
@@ -876,6 +880,8 @@ async function service(args: string[]) {
 
 /** A plugin is a folder of its own under this install, named after its repository. */
 function addPlugin(args: string[]) {
+  // An executable's plugins are built in: a folder cloned to disk could not be loaded back.
+  if (SEA) fail("单文件版不能加装插件：插件已经打在程序里。");
   const url = args[0] ?? fail(TAKES.add.usage);
   const name = url
     .replace(/\/$/, "")
@@ -892,6 +898,8 @@ function addPlugin(args: string[]) {
 }
 
 async function update() {
+  // An executable has no repository to update from: a new release is a new file to download.
+  if (SEA) fail("单文件版不支持 update：重新下载一个新的可执行文件。");
   const { updateCode } = await import("./update.ts");
   const { changed, to } = updateCode(ROOT);
   const version = to ? `（${to}）` : "";

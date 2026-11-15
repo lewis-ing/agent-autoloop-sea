@@ -182,5 +182,6 @@ export async function conformance(base: string, config: Probe, request: typeof f
 
 if (import.meta.main) {
   const config = JSON.parse(readFileSync(process.argv[3], "utf8"));
-  console.log(JSON.stringify(await conformance(process.argv[2], config), null, 2));
+  // No top-level await: this file is also bundled into the single executable, whose entry is CommonJS.
+  void conformance(process.argv[2], config).then((result) => console.log(JSON.stringify(result, null, 2)));
 }

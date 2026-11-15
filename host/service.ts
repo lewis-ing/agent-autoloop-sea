@@ -8,8 +8,8 @@ import path from "node:path";
 import { HOME } from "./home.ts";
 import { stablePath } from "./node-path.ts";
 import { powershell, processCommandSync, psQuote } from "./command.ts";
+import { SEA, SELF } from "./sea.ts";
 
-const PROGRAM = path.join(import.meta.dirname, "..", "bin", "agent-autoloop.ts");
 /** Another install on this machine (another AGENT_AUTOLOOP_HOME) has a service of its own. */
 const label = () =>
   HOME === path.join(homedir(), ".agent-autoloop")
@@ -18,19 +18,27 @@ const label = () =>
 const plistFile = () => path.join(homedir(), "Library/LaunchAgents", `${label()}.plist`);
 const unitFile = () => path.join(homedir(), ".config/systemd/user", `${label()}.service`);
 const BACKGROUND = path.join(import.meta.dirname, "background.ts");
+const WSCRIPT = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "wscript.exe");
 const LAUNCHER = path.join(import.meta.dirname, "background.js");
 const windowsArgument = (word: string) => `"${word.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`;
 const task = () => `Get-ScheduledTask | Where-Object { $_.TaskName -eq ${psQuote(label())} -and $_.TaskPath -eq '\\' }`;
 
-/** What the login task starts. Started straight from it, node gets a console window on the desktop, and the task doesn't
- * start it again when it exits. wscript has no console: background.js starts the hub hidden and again when it stops. */
+/** What the login task starts. A console program started straight from the task puts a window on the desktop, so a
+ * hidden PowerShell runs it and waits: the task's own restart then follows the hub, and no window ever shows. */
 export function windowsLauncher() {
+  // An executable has no background script beside it, so one is written next to it: wscript runs it hidden and waits,
+  // and the task's own restart follows the hub rather than a shell that has already left.
+  if (SEA) {
+    const exe = stablePath(process.execPath);
+    const vbs = path.join(path.dirname(exe), "agent-autoloop-hidden.vbs");
+    const command = `${exe} up`.replaceAll('"', '""');
+    writeFileSync(vbs, `CreateObject("WScript.Shell").Run "${command}", 0, True\n`);
+    return { program: WSCRIPT, args: ["//B", "//Nologo", vbs].join(" "), directory: HOME };
+  }
   return {
-    program: path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "wscript.exe"),
+    program: WSCRIPT,
     args: ["//B", "//Nologo", "//E:JScript"]
-      .concat(
-        [LAUNCHER, process.execPath, "--disable-warning=ExperimentalWarning", BACKGROUND, HOME].map(windowsArgument),
-      )
+      .concat([LAUNCHER, process.execPath, "--disable-warning=ExperimentalWarning", BACKGROUND, HOME].map(windowsArgument))
       .join(" "),
     directory: HOME,
   };
@@ -135,7 +143,7 @@ export function plist() {
   const systemPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
   const executable = stablePath(process.execPath);
   const searchPath = [path.dirname(executable), ...systemPaths].join(":");
-  const program = [executable, "--disable-warning=ExperimentalWarning", PROGRAM, "up"];
+  const program = SEA ? [executable, "up"] : [executable, "--disable-warning=ExperimentalWarning", SELF, "up"];
   const programArguments = program.map((part) => `<string>${xml(part)}</string>`).join("");
   const homeEntry = `<key>AGENT_AUTOLOOP_HOME</key><string>${xml(HOME)}</string>`;
   const pathEntry = `<key>PATH</key><string>${xml(searchPath)}</string>`;
@@ -154,9 +162,13 @@ export function plist() {
 `;
 }
 
-export function unit(options: UnitOptions = { home: HOME, executable: process.execPath, program: PROGRAM }) {
+export function unit(options: UnitOptions = { home: HOME, executable: process.execPath, program: SELF }) {
   const environment = systemdItem(`AGENT_AUTOLOOP_HOME=${options.home}`);
-  const command = [options.executable, "--disable-warning=ExperimentalWarning", options.program, "up"]
+  // A checkout runs its entry script through node; an executable is the program, and node's warning flag is not its.
+  const command = (SEA
+    ? [options.executable, "up"]
+    : [options.executable, "--disable-warning=ExperimentalWarning", options.program, "up"]
+  )
     .map((part) => systemdItem(part, true))
     .join(" ");
   return `[Unit]
@@ -203,7 +215,7 @@ export function installService() {
 export function removeService() {
   if (process.platform === "win32") {
     const removed =
-      powershell(`$task = ${task()}; if ($task -and $task.Actions.Arguments.Contains(${psQuote(windowsArgument(BACKGROUND))})) {
+      powershell(`$task = ${task()}; if ($task -and $task.Actions.Arguments.Contains(${psQuote(windowsArgument(stablePath(process.execPath)))})) {
       $task | Stop-ScheduledTask
       $task | Unregister-ScheduledTask -Confirm:$false
       'removed'
@@ -215,10 +227,11 @@ export function removeService() {
   const file = process.platform === "darwin" ? plistFile() : unitFile();
   if (!existsSync(file)) return;
   const service = readFileSync(file, "utf8");
+  const executable = stablePath(process.execPath);
   const ownsService =
     process.platform === "darwin"
-      ? service.includes(xml(PROGRAM))
-      : service.includes(systemdItem(PROGRAM, true)) || service.includes(PROGRAM);
+      ? service.includes(xml(executable))
+      : service.includes(systemdItem(executable, true)) || service.includes(executable);
   if (!ownsService) return;
   if (process.platform === "darwin") {
     spawnSync("launchctl", ["bootout", `${domain()}/${label()}`], { stdio: "ignore" });
@@ -238,7 +251,7 @@ export function runningUp() {
   try {
     command = processCommandSync(Number(pid));
   } catch {}
-  return /agent-autoloop(\.ts)?"? up\b/.test(command) ? Number(pid) : null;
+  return /agent-autoloop(\.(ts|exe))?"? up\b/.test(command) ? Number(pid) : null;
 }
 
 /** Stopping a service returns before its process is gone, and one started by hand has no service to stop it. */

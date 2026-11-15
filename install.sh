@@ -1,15 +1,59 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Installs Agent 自动化中台: a clone in ~/.agent-autoloop/app, with nothing to build and nothing else to install.
+# With --sea it downloads this machine's single executable instead, and needs neither git nor node.
 set -e
 PUBLISHED=https://github.com/KKKKhazix/agent-autoloop.git
 REPO="${AGENT_AUTOLOOP_REPO:-$PUBLISHED}"
 ROOT="${AGENT_AUTOLOOP_HOME:-$HOME/.agent-autoloop}"
 APP="$ROOT/app"
-PROGRAM="$APP/bin/agent-autoloop.ts"
 
-need_node() {
-  echo "$1"
-  cat <<'END'
+SEA=0
+for arg in "$@"; do [ "$arg" = "--sea" ] && SEA=1; done
+[ -n "${AGENT_AUTOLOOP_SEA:-}" ] && SEA=1
+if [ "$SEA" = 1 ]; then
+  rest=()
+  for arg in "$@"; do [ "$arg" = "--sea" ] || rest+=("$arg"); done
+  set -- "${rest[@]}"
+fi
+
+mkdir -p -m 700 "$ROOT"
+chmod 700 "$ROOT"
+
+# The executable's name is this machine's platform, as the build names it.
+sea_binary() {
+  case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64) echo agent-autoloop-darwin-arm64 ;;
+    Darwin/x86_64) echo agent-autoloop-darwin-x64 ;;
+    Linux/x86_64) echo agent-autoloop-linux-x64 ;;
+    Linux/aarch64 | Linux/arm64) echo agent-autoloop-linux-arm64 ;;
+    MINGW* | MSYS* | CYGWIN*) echo agent-autoloop-win32-x64.exe ;;
+    *) return 1 ;;
+  esac
+}
+
+if [ "$SEA" = 1 ]; then
+  command -v curl >/dev/null || { echo "需要 curl。"; exit 1; }
+  bin="$APP/bin"
+  mkdir -p "$bin"
+  binary=$(sea_binary) || { echo "没有这台机器的可执行文件：$(uname -s) $(uname -m)。"; exit 1; }
+  base="${AGENT_AUTOLOOP_BINARIES:-https://github.com/KKKKhazix/agent-autoloop/releases/latest/download}"
+  # Named after the program, not the platform: what a shell finds is `agent-autoloop`.
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) name=agent-autoloop.exe ;;
+    *) name=agent-autoloop ;;
+  esac
+  echo "下载 $binary……"
+  curl -fsSL "$base/$binary" -o "$bin/$name.tmp"
+  mv "$bin/$name.tmp" "$bin/$name"
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) ;; # Windows takes its permissions from the folder, not from chmod
+    *) chmod 700 "$bin/$name" ;;
+  esac
+  PROGRAM="$bin/$name"
+else
+  need_node() {
+    echo "$1"
+    cat <<'END'
 用 Homebrew 的话，node@24 装好后默认不在 PATH 上，这三行都要运行（用 bash 就把 ~/.zshrc 换成 ~/.bashrc）：
   brew install node@24
   echo "export PATH=\"$(brew --prefix node@24)/bin:\$PATH\"" >> ~/.zshrc
@@ -19,36 +63,35 @@ need_node() {
   nvm alias default 24
 装好后再运行一遍这个安装命令。
 END
-  exit 1
-}
+    exit 1
+  }
 
-command -v git >/dev/null || { echo "需要 git。"; exit 1; }
-command -v node >/dev/null || need_node "需要 Node.js 24 或更新，这台电脑上没找到。"
-node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 24 ? 0 : 1)' || need_node "需要 Node.js 24 或更新，现在是 $(node -v)。"
+  command -v git >/dev/null || { echo "需要 git。"; exit 1; }
+  command -v node >/dev/null || need_node "需要 Node.js 24 或更新，这台电脑上没找到。"
+  node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 24 ? 0 : 1)' || need_node "需要 Node.js 24 或更新，现在是 $(node -v)。"
 
-mkdir -p -m 700 "$ROOT"
-chmod 700 "$ROOT"
-
-# A copy follows where it came from, and what came from the public repository follows its newest release, which has passed
-# every check. cli/update.ts decides the same way, or an update would fail on a copy this had moved.
-from="$REPO"
-if [ -d "$APP/.git" ]; then
-  from=$(git -C "$APP" config --get remote.origin.url || true)
-fi
-release=""
-if [ "$from" = "$PUBLISHED" ]; then
-  # On a line of its own: in a pipe, not getting an answer would look like there being no releases.
-  tags=$(git ls-remote --refs --tags "$PUBLISHED" 'v*')
-  release=$(printf '%s\n' "$tags" | sed -n 's#.*refs/tags/\(v[0-9]*\.[0-9]*\.[0-9]*\)$#\1#p' |
-    sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1)
-fi
-if [ ! -d "$APP/.git" ]; then
-  git -c advice.detachedHead=false clone --quiet --depth 1 ${release:+--branch "$release"} -- "$REPO" "$APP"
-elif [ -n "$release" ]; then
-  git -C "$APP" fetch --quiet --depth 1 origin "refs/tags/$release:refs/tags/$release"
-  git -C "$APP" checkout --quiet --detach "$release"
-else
-  git -C "$APP" pull --ff-only --quiet
+  # A copy follows where it came from, and what came from the public repository follows its newest release, which has
+  # passed every check. cli/update.ts decides the same way, or an update would fail on a copy this had moved.
+  from="$REPO"
+  if [ -d "$APP/.git" ]; then
+    from=$(git -C "$APP" config --get remote.origin.url || true)
+  fi
+  release=""
+  if [ "$from" = "$PUBLISHED" ]; then
+    # On a line of its own: in a pipe, not getting an answer would look like there being no releases.
+    tags=$(git ls-remote --refs --tags "$PUBLISHED" 'v*')
+    release=$(printf '%s\n' "$tags" | sed -n 's#.*refs/tags/\(v[0-9]*\.[0-9]*\.[0-9]*\)$#\1#p' |
+      sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1)
+  fi
+  if [ ! -d "$APP/.git" ]; then
+    git -c advice.detachedHead=false clone --quiet --depth 1 ${release:+--branch "$release"} -- "$REPO" "$APP"
+  elif [ -n "$release" ]; then
+    git -C "$APP" fetch --quiet --depth 1 origin "refs/tags/$release:refs/tags/$release"
+    git -C "$APP" checkout --quiet --detach "$release"
+  else
+    git -C "$APP" pull --ff-only --quiet
+  fi
+  PROGRAM="$APP/bin/agent-autoloop.ts"
 fi
 
 # Only a folder that's on PATH makes `agent-autoloop` work, and an agent-autoloop that isn't this one is someone else's to keep.

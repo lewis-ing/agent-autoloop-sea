@@ -1,0 +1,64 @@
+name: build-sea
+# Builds the single executable for each machine it runs on. An executable cannot be cross-compiled, so every platform
+# and architecture builds on its own runner. It is run by hand for a commit, and by a release for its tag.
+run-name: ${{ github.event_name == 'release' && format('build-sea {0}', github.event.release.tag_name) || format('build-sea {0}', inputs.ref) }}
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 要构建的提交或 tag
+        default: main
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win32-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-latest
+            target: darwin-arm64
+          - os: macos-13
+            target: darwin-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci
+      # esbuild's binary comes from its install script, which a locked-down npm may not run.
+      - run: node node_modules/esbuild/install.js
+      - run: npm run build:sea
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/agent-autoloop-*
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/agent-autoloop-*

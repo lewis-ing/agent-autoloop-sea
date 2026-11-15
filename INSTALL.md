@@ -4,7 +4,9 @@
 
 ## 安装
 
-支持原生 Windows、macOS 和 Linux。需要 Node.js 24 或更新、Git，以及一个已经登录的命令行 Agent；macOS/Linux 还需要 curl。Windows 使用系统自带的 PowerShell 5.1、任务计划程序和 Windows Script Host（wscript）。
+支持原生 Windows、macOS 和 Linux。默认装一份源码，需要 Node.js 24 或更新、Git，以及一个已经登录的命令行 Agent；macOS/Linux 还需要 curl。Windows 使用系统自带的 PowerShell 5.1、任务计划程序和 Windows Script Host（wscript）。
+
+也可以装**单文件版**：每条安装命令加 `--sea`（Windows 用 `install.ps1 -sea`），只下载对应平台的可执行文件，不需要 Node 和 Git。它把插件打在程序里，所以装好后 `agent-autoloop add` 和 `agent-autoloop update` 都不可用：插件不能自己加，新版要重新下载。构建和分发见[单文件版](#单文件版)。
 
 Windows PowerShell：
 
@@ -108,6 +110,20 @@ agent-autoloop uninstall
 终端里确认后才执行；非交互运行时加 `--yes` 跳过确认，数据同样保留。它只停自己的服务和进程、删除指向自身的命令及 Skill 链接，以及安装目录里的 `app`。其他同名文件不动；数据目录不删除。
 
 临时安装验证完，用 `agent-autoloop uninstall --yes` 停掉本次进程，再清掉自己创建的临时目录。不要卸载用户已经在用的中台。
+
+## 单文件版
+
+把程序打成一个可执行文件，装机时不需要 Node 和 Git。构建是 esbuild 打成一个 CommonJS 文件，再用 Node 的 SEA 注入一份 node：
+
+```bash
+npm run build:sea
+```
+
+产物在 `dist/agent-autoloop-<平台>-<架构>`（Windows 带 `.exe`）。单文件不能交叉编译，`release` 发布时 CI（`.github/workflows/build-sea.yml`）在五个 runner 上各构建一个：Windows x64、Linux x64、Linux arm64、macOS arm64、macOS x64。
+
+装的时候每条安装命令加 `--sea`，它按平台下载对应文件，重命名为 `agent-autoloop`（Windows 是 `agent-autoloop.exe`），放进 `~/.agent-autoloop/app/bin` 并加进 PATH。下载源默认是 GitHub Release，可以用 `AGENT_AUTOLOOP_BINARIES` 指到别处（自建分发或本地测试）。
+
+单文件版的限制：内置插件可用，`agent-autoloop add` 和 `agent-autoloop update` 不可用；Windows 装服务时 exe 旁会多一个 `agent-autoloop-hidden.vbs`；`init` 不再把 Skill 链到 `~/.claude`/`~/.codex`。产物默认**没有签名**：Windows 会被 SmartScreen 拦，macOS 会被 Gatekeeper 拦，正式发布前需要代码签名和公证。
 
 ## 文档
 

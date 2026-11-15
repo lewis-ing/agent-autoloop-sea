@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { HubError, type Hub } from "../protocol/client.ts";
 import { HOME } from "../host/home.ts";
+import { SEA, SELF, selfArgs } from "../host/sea.ts";
 import { commandLine, processCommand } from "../host/command.ts";
 import type { Job } from "../protocol/job.ts";
 import { addUsage, type Notice, type Result } from "../protocol/validate.ts";
@@ -249,16 +250,14 @@ export function createWorker({
       try {
         const child = spawn(
           process.execPath,
-          [
-            "--disable-warning=ExperimentalWarning",
-            path.join(import.meta.dirname, "run.ts"),
-            "--supervise",
-            command,
-            marker(entry),
-          ],
+          selfArgs("__sea:run", "--supervise", command, marker(entry)),
           {
             cwd,
-            env: { ...agentEnvironment(entry), AGENT_AUTOLOOP_NODE: process.execPath },
+            env: {
+              ...agentEnvironment(entry),
+              AGENT_AUTOLOOP_NODE: process.execPath,
+              AGENT_AUTOLOOP_ENTRY: SEA ? "" : SELF,
+            },
             detached: true,
             windowsHide: true,
             stdio: ["ignore", output, errors],

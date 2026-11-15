@@ -24,14 +24,20 @@
     "test:deep": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 sim/*.test.ts",
     "test:nightly": "npm run test:deep && node --disable-warning=ExperimentalWarning scripts/benchmark.ts",
     "benchmark": "node --disable-warning=ExperimentalWarning scripts/benchmark.ts",
-    "test:windows": "node scripts/test-windows.ts"
+    "test:windows": "node scripts/test-windows.ts",
+    "build:sea": "node --disable-warning=ExperimentalWarning scripts/build-sea.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.4",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
     "prettier": "3.9.10",
     "typescript": "7.0.2"
   },
   "prettier": {
     "printWidth": 120
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

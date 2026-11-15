@@ -20,7 +20,7 @@
 
 ## 上手
 
-支持 Windows、macOS 和 Linux。需要 Node 24 或更新、Git，以及一个已经登录的命令行 Agent；macOS/Linux 还需要 curl，不需要 GitHub 账号。也可以把[安装说明](INSTALL.md)交给你的 Agent。
+支持 Windows、macOS 和 Linux。默认装一份源码，需要 Node 24 或更新、Git，以及一个已经登录的命令行 Agent；macOS/Linux 还需要 curl，不需要 GitHub 账号。也可以把[安装说明](INSTALL.md)交给你的 Agent。
 
 Windows PowerShell：
 
@@ -33,6 +33,14 @@ macOS / Linux：
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KKKKhazix/agent-autoloop/main/install.sh | sh
 ```
+
+**或者要一个单独的可执行文件**（加 `--sea`）：只下载对应平台的那一个文件，不用装 Node 和 Git。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KKKKhazix/agent-autoloop/main/install.sh | sh -s -- --sea
+```
+
+单文件版把插件打在程序里：内置的 Agent、通道和事件都能用，但**不能再自己加 `.ts` 插件**，也**不支持 `update`**（新版要重新下载）。Windows 装后台服务时会在 exe 旁边放一个几行的 `agent-autoloop-hidden.vbs`，用来让它不带窗口地启动。
 
 安装和 `agent-autoloop update` 都装最新的 [Release](https://github.com/KKKKhazix/agent-autoloop/releases)，那是通过了全部检查的版本。
 

@@ -182,7 +182,7 @@ export async function bridge(turn: Turn) {
   }
 }
 
-if (import.meta.main) {
+if (import.meta.main || process.env.AGENT_AUTOLOOP_SEA_CHILD === "__sea:bridge") {
   bridge(JSON.parse(process.argv[2])).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;

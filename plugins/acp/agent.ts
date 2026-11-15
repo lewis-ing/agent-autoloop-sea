@@ -1,14 +1,9 @@
-import { join } from "node:path";
 import { stablePath } from "../../host/node-path.ts";
+import { selfArgs } from "../../host/sea.ts";
 import { tail, type Adapter, type Reading } from "../../worker/agents.ts";
 
 export default {
-  command: (turn) => [
-    stablePath(process.execPath),
-    "--disable-warning=ExperimentalWarning",
-    join(import.meta.dirname, "bridge.ts"),
-    JSON.stringify(turn),
-  ],
+  command: (turn) => [stablePath(process.execPath), ...selfArgs("__sea:bridge"), JSON.stringify(turn)],
   read(stdout, code, stderr) {
     let reading: Reading = {};
     for (const line of stdout.trim().split("\n")) {

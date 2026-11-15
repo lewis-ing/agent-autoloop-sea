@@ -183,7 +183,7 @@ export async function run(repo: string, context: Context, testLocalHealth = fals
   }
 }
 
-if (import.meta.main) {
+if (import.meta.main || process.env.AGENT_AUTOLOOP_SEA_CHILD === "__sea:delivery") {
   const [repo, ...args] = process.argv.slice(2);
   const { values } = parseArgs({
     args,

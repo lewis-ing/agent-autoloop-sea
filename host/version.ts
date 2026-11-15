@@ -7,8 +7,11 @@ import path from "node:path";
 const ROOT = path.join(import.meta.dirname, "..");
 
 /** What was deployed, or the checkout's commit. Git says: after a gc a branch's ref is no longer a file of its own. */
+declare const __SEA_COMMIT__: string | undefined;
 export function commitOf(root = ROOT) {
   if (process.env.AGENT_AUTOLOOP_COMMIT) return process.env.AGENT_AUTOLOOP_COMMIT;
+  // An executable has no repository either: the build names the commit it was made from.
+  if (typeof __SEA_COMMIT__ !== "undefined") return __SEA_COMMIT__;
   try {
     // Only a checkout has its own .git entry; unpacked copies must not inherit a parent repository's commit.
     if (!existsSync(path.join(root, ".git"))) return "dev";
@@ -20,7 +23,10 @@ export function commitOf(root = ROOT) {
 }
 
 /** The release this commit is, if it is one. A try-out tag left on the same commit gives way to the release it became. */
+declare const __SEA_RELEASE__: string | undefined;
 export function releaseOf(root = ROOT) {
+  // An executable has no repository: the build names the release it was made from.
+  if (typeof __SEA_RELEASE__ !== "undefined") return __SEA_RELEASE__ || null;
   try {
     if (!existsSync(path.join(root, ".git"))) return null;
     const args = ["-C", root, "tag", "--points-at", "HEAD"];

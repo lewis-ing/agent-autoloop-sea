@@ -4,10 +4,11 @@ import { existsSync, lstatSync, realpathSync, rmSync, unlinkSync } from "node:fs
 import { homedir } from "node:os";
 import path from "node:path";
 import { HOME } from "../host/home.ts";
+import { SEA } from "../host/sea.ts";
 import { removeService, stopUp } from "../host/service.ts";
 import { powershell, psQuote } from "../host/command.ts";
 
-const ROOT = path.join(import.meta.dirname, "..");
+const ROOT = SEA ? "" : path.join(import.meta.dirname, "..");
 
 function removeLink(link: string, target: string) {
   if (!lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink()) return;
@@ -22,6 +23,8 @@ function removeLink(link: string, target: string) {
 }
 
 function removeLinks() {
+  // An executable is not linked and has no app folder: nothing of its install is a link to take away.
+  if (SEA) return;
   const program = path.join(ROOT, "bin", "agent-autoloop.ts");
   const onPath = (process.env.PATH ?? "").split(path.delimiter).filter((place) => path.isAbsolute(place));
   const places = [path.join(homedir(), ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", ...onPath];
@@ -43,7 +46,7 @@ export async function uninstall(yes: boolean, ask: ((question: string) => Promis
   stopUp();
   removeLinks();
   const installedApp = path.join(HOME, "app");
-  if (existsSync(installedApp) && realpathSync(installedApp) === realpathSync(ROOT)) {
+  if (!SEA && existsSync(installedApp) && realpathSync(installedApp) === realpathSync(ROOT)) {
     if (process.platform === "win32") {
       powershell(`$old = [Environment]::GetEnvironmentVariable('Path', 'User');
         $next = ($old -split ';' | Where-Object { $_ -ne ${psQuote(path.join(ROOT, "bin"))} }) -join ';';

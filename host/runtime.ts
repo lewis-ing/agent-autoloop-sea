@@ -48,13 +48,16 @@ const CARD_HASH_INDEX =
 // The persisted projection is expendable; the log alone rebuilds it, which an upgrade has to wait for. So only the files that
 // decide what's stored count here, whole, since what they do is spread across helpers and constants. The views above are
 // made anew at every start and need no rebuild.
-const format = digest(
-  ["../kernel/evolve.ts", "../kernel/credentials.ts"]
-    .map((file) => readFileSync(new URL(file, import.meta.url), "utf8"))
-    .join("\n") +
-    CARD_HASH_INDEX +
-    digest(environment.secret),
-);
+// An executable cannot read its own source, so the build puts the same two files' text in. Either way it is the same
+// code, and the view is rebuilt only when that code or the master key changes.
+declare const __SEA_SOURCES__: string | undefined;
+const sourceText =
+  typeof __SEA_SOURCES__ !== "undefined"
+    ? __SEA_SOURCES__
+    : ["../kernel/evolve.ts", "../kernel/credentials.ts"]
+        .map((file) => readFileSync(new URL(file, import.meta.url), "utf8"))
+        .join("\n");
+const format = digest(sourceText + CARD_HASH_INDEX + digest(environment.secret));
 let current = openView(db, format);
 db.exec(CARD_HASH_INDEX);
 
